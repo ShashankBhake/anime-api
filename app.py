@@ -52,6 +52,10 @@ def episode_url():
         return jsonify(data)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    
+@app.route('/')
+def index():
+    return "API is running"
 
 if __name__ == '__main__':
     init()
