@@ -15,6 +15,19 @@ def remove_ansi_codes(s):
     ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
     return ansi_escape.sub('', s)
 
+def clean_output(output):
+    """
+    Decode the output, remove ANSI escape codes and any remaining
+    control characters, then strip leading/trailing whitespace.
+    """
+    # Decode with error replacement
+    decoded = output.decode('utf-8', errors='replace')
+    # First remove ANSI sequences
+    no_ansi = remove_ansi_codes(decoded)
+    # Remove other control characters (except newline and tab if desired)
+    cleaned = re.sub(r'[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]', '', no_ansi).strip()
+    return cleaned
+
 def init():
     """
     Initialize the environment by ensuring that anime.sh is executable.
@@ -34,8 +47,7 @@ def search():
     query = request.args.get('query', '')
     try:
         output = subprocess.check_output(['./anime.sh', '/search', f'query={query}'])
-        # Remove any ANSI color codes or control characters
-        cleaned_output = remove_ansi_codes(output.decode('utf-8'))
+        cleaned_output = clean_output(output)
         data = json.loads(cleaned_output)
         return jsonify(data)
     except Exception as e:
@@ -45,7 +57,7 @@ def search():
 def episodes(show_id):
     try:
         output = subprocess.check_output(['./anime.sh', f'/episodes/{show_id}'])
-        cleaned_output = remove_ansi_codes(output.decode('utf-8'))
+        cleaned_output = clean_output(output)
         data = json.loads(cleaned_output)
         return jsonify(data)
     except Exception as e:
@@ -59,7 +71,7 @@ def episode_url():
     params = f"show_id={show_id}&ep_no={ep_no}&quality={quality}"
     try:
         output = subprocess.check_output(['./anime.sh', '/episode_url', params])
-        cleaned_output = remove_ansi_codes(output.decode('utf-8'))
+        cleaned_output = clean_output(output)
         data = json.loads(cleaned_output)
         return jsonify(data)
     except Exception as e:
