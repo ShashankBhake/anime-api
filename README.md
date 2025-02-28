@@ -1,6 +1,7 @@
 # Anime API Documentation
 
 ## Overview
+
 Search for anime titles, retrieve episode lists, and get playback URLs for specific episodes.
 
 ## Endpoints
@@ -11,7 +12,7 @@ Search for anime titles, retrieve episode lists, and get playback URLs for speci
 -   **Description**: Search for anime titles.
 -   **Request**:
     ```
-    GET https://anime-api-l49a.onrender.com/search?query=death%20note
+    GET https://allanime-api.up.railway.app/search?query=death%20note
     ```
 -   **Response**:
     ```json
@@ -40,7 +41,7 @@ Search for anime titles, retrieve episode lists, and get playback URLs for speci
 -   **Description**: Retrieve a list of episode numbers for a given anime.
 -   **Request**:
     ```
-    GET https://anime-api-l49a.onrender.com/episodes/RezHft5pjutwWcE3B
+    GET https://allanime-api.up.railway.app/episodes/RezHft5pjutwWcE3B
     ```
 -   **Response**:
     ```json
@@ -53,7 +54,7 @@ Search for anime titles, retrieve episode lists, and get playback URLs for speci
 -   **Description**: Retrieve the playback URL for a specific anime episode.
 -   **Request**:
     ```
-    GET https://anime-api-l49a.onrender.com/episode_url?show_id=pfcMSNoDh2H5QBzMr&ep_no=1&quality=best
+    GET https://allanime-api.up.railway.app/episode_url?show_id=RezHft5pjutwWcE3B&ep_no=1&quality=best
     ```
 -   **Response**:
     ```json
