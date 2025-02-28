@@ -71,6 +71,7 @@ def index():
     helptext = {
         "title": "Anime API",
         "status": "running",
+        "help": "https://github.com/shashankbhake/anime-api",
         "available_endpoints": [
             "/search?query=<query>",
             "/episodes/<show_id>",
