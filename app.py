@@ -65,6 +65,19 @@ def episode_url():
         return jsonify(data)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    
+@app.route('/', methods=['GET'])
+def index():
+    helptext = {
+        "title": "Anime API",
+        "status": "running",
+        "available_endpoints": [
+            "/search?query=<query>",
+            "/episodes/<show_id>",
+            "/episode_url?show_id=<show_id>&ep_no=<ep_no>&quality=<quality>"
+        ]
+    }
+    return helptext
 
 if __name__ == '__main__':
     init()
