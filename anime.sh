@@ -118,15 +118,20 @@ episodes_list() {
 # QUERY STRING PARSING (basic)
 # ------------------------------
 parse_query() {
-    # Parse key=value pairs from QUERY_STRING
-    for param in $(echo "$QUERY_STRING" | tr '&' ' '); do
-        key=$(echo "$param" | cut -d'=' -f1)
-        value=$(echo "$param" | cut -d'=' -f2-)
+    # Parse key=value pairs from QUERY_STRING, splitting only on "&" so that spaces are preserved.
+    old_IFS="$IFS"
+    IFS='&'
+    set -- $QUERY_STRING
+    IFS="$old_IFS"
+    for param in "$@"; do
+        key=${param%%=*}
+        value=${param#*=}
         case "$key" in
-        query) query=$(echo "$value" | sed 's/+/ /g') ;;
-        show_id) id="$value" ;;
-        ep_no) ep_no="$value" ;;
-        quality) quality="$value" ;;
+            query) query=$(echo "$value" | sed 's/+/ /g') ;;
+            show_id) id="$value" ;;
+            ep_no) ep_no="$value" ;;
+            quality) quality="$value" ;;
+            raw) raw="$value" ;;
         esac
     done
 }
@@ -154,17 +159,18 @@ case "$REQUEST_URI_PATH" in
     tempfile=$(mktemp /tmp/ani_api.XXXXXX)
     echo "$result" >"$tempfile"
     # Convert tab-separated output (id, title, episodes) into a JSON array.
-    output="["
-    first=1
-    while IFS=$'\t' read -r anime_id title eps; do
-        if [ $first -eq 0 ]; then
-            output="${output},"
-        fi
-        output="${output}{\"id\":\"${anime_id}\",\"title\":\"${title}\",\"episodes\":${eps}}"
-        first=0
-    done <"$tempfile"
-    rm "$tempfile"
-    output="${output}]"
+    # output="["
+    # first=1
+    # while IFS=$'\t' read -r anime_id title eps; do
+    #     if [ $first -eq 0 ]; then
+    #         output="${output},"
+    #     fi
+    #     output="${output}{\"id\":\"${anime_id}\",\"title\":\"${title}\",\"episodes\":${eps}}"
+    #     first=0
+    # done <"$tempfile"
+    # rm "$tempfile"
+    # output="${output}]"
+    output="$result"
     echo "$output"
     ;;
 /episodes/*)

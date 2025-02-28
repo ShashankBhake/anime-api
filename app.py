@@ -3,50 +3,9 @@ from flask_cors import CORS
 import subprocess
 import json
 import os
-import re
 
 app = Flask(__name__)
 CORS(app)  # Enable Cross-Origin Resource Sharing for all routes
-
-def remove_ansi_codes(s):
-    """
-    Remove ANSI escape sequences from a string.
-    """
-    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-    return ansi_escape.sub('', s)
-
-def clean_output(output):
-    """
-    Decode the output, remove ANSI escape codes and any remaining
-    control characters, then strip leading/trailing whitespace.
-    """
-    # Decode with error replacement
-    decoded = output.decode('utf-8', errors='replace')
-    # Remove ANSI sequences
-    no_ansi = remove_ansi_codes(decoded)
-    # Remove other control characters (except newline and tab if desired)
-    cleaned = re.sub(r'[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]', '', no_ansi).strip()
-    return cleaned
-
-def run_anime_sh(args):
-    """
-    Run the anime.sh command with the provided arguments.
-    Cleans the output and attempts to parse it as JSON.
-    If parsing fails, returns a dict with error details and raw output.
-    """
-    try:
-        output = subprocess.check_output(args)
-    except subprocess.CalledProcessError as e:
-        return {"error": f"Subprocess error: {str(e)}"}
-    
-    cleaned_output = clean_output(output)
-    
-    try:
-        data = json.loads(cleaned_output)
-        return data
-    except json.JSONDecodeError as e:
-        # Instead of crashing, return the raw output and error details
-        return {"error": "JSONDecodeError", "raw_output": cleaned_output, "details": str(e)}
 
 def init():
     """
@@ -65,19 +24,34 @@ def init():
 @app.route('/search', methods=['GET'])
 def search():
     query = request.args.get('query', '')
-    args = ['./anime.sh', '/search', f'query={query}']
-    data = run_anime_sh(args)
-    if 'error' in data:
-        return jsonify(data), 500
-    return jsonify(data)
+    try:
+        output = subprocess.check_output(['./anime.sh', '/search', f'query={query}'])
+        data = output.decode('utf-8').strip().splitlines()
+        result = []
+        for line in data:
+            parts = line.split("\t")
+            if len(parts) != 3:
+                continue
+            _id, title, episodes = parts
+            result.append({
+                "id": _id,
+                "title": title,
+                "episodes": int(episodes)
+            })
+        
+        print(json.dumps(result, indent=4))
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/episodes/<show_id>', methods=['GET'])
 def episodes(show_id):
-    args = ['./anime.sh', f'/episodes/{show_id}']
-    data = run_anime_sh(args)
-    if 'error' in data:
-        return jsonify(data), 500
-    return jsonify(data)
+    try:
+        output = subprocess.check_output(['./anime.sh', f'/episodes/{show_id}'])
+        data = json.loads(output.decode('utf-8'))
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/episode_url', methods=['GET'])
 def episode_url():
@@ -85,15 +59,12 @@ def episode_url():
     ep_no = request.args.get('ep_no', '')
     quality = request.args.get('quality', 'best')
     params = f"show_id={show_id}&ep_no={ep_no}&quality={quality}"
-    args = ['./anime.sh', '/episode_url', params]
-    data = run_anime_sh(args)
-    if 'error' in data:
-        return jsonify(data), 500
-    return jsonify(data)
-
-@app.route('/')
-def index():
-    return "API is running"
+    try:
+        output = subprocess.check_output(['./anime.sh', '/episode_url', params])
+        data = json.loads(output.decode('utf-8'))
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     init()
