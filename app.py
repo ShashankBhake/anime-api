@@ -3,9 +3,17 @@ from flask_cors import CORS
 import subprocess
 import json
 import os
+import re
 
 app = Flask(__name__)
 CORS(app)  # Enable Cross-Origin Resource Sharing for all routes
+
+def remove_ansi_codes(s):
+    """
+    Remove ANSI escape sequences from a string.
+    """
+    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+    return ansi_escape.sub('', s)
 
 def init():
     """
@@ -26,7 +34,9 @@ def search():
     query = request.args.get('query', '')
     try:
         output = subprocess.check_output(['./anime.sh', '/search', f'query={query}'])
-        data = json.loads(output.decode('utf-8'))
+        # Remove any ANSI color codes or control characters
+        cleaned_output = remove_ansi_codes(output.decode('utf-8'))
+        data = json.loads(cleaned_output)
         return jsonify(data)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -35,7 +45,8 @@ def search():
 def episodes(show_id):
     try:
         output = subprocess.check_output(['./anime.sh', f'/episodes/{show_id}'])
-        data = json.loads(output.decode('utf-8'))
+        cleaned_output = remove_ansi_codes(output.decode('utf-8'))
+        data = json.loads(cleaned_output)
         return jsonify(data)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -48,7 +59,8 @@ def episode_url():
     params = f"show_id={show_id}&ep_no={ep_no}&quality={quality}"
     try:
         output = subprocess.check_output(['./anime.sh', '/episode_url', params])
-        data = json.loads(output.decode('utf-8'))
+        cleaned_output = remove_ansi_codes(output.decode('utf-8'))
+        data = json.loads(cleaned_output)
         return jsonify(data)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
