@@ -5,9 +5,21 @@ import subprocess
 import requests
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from dotenv import load_dotenv
+from pymongo import MongoClient
 
 app = Flask(__name__)
 CORS(app)  # Enable Cross-Origin Resource Sharing for all routes
+
+# load .env and initialize MongoDB
+load_dotenv()
+MONGODB_URI = os.getenv('MONGODB_URI')
+if not MONGODB_URI:
+    raise RuntimeError('MONGODB_URI not set in environment')
+client = MongoClient(MONGODB_URI)
+# use 'anime_api' database (or default from URI)
+db = client.get_database('anime_api')
+id_collection = db['id_map']
 
 def sanitize_string(s):
     """
@@ -49,8 +61,15 @@ def init():
     else:
         print("[ERROR] anime.sh not found in the current directory.")
 
-# map MAL IDs to internal anime.sh IDs
-id_map = {}
+# removed in-memory id_map; using MongoDB collection instead
+
+def get_orig_id(mal_id):
+    entry = id_collection.find_one({'mal_id': int(mal_id)})
+    return entry['orig_id'] if entry else None
+
+def save_mapping(mal_id, orig_id):
+    # store mapping by orig_id, mal_id may be None
+    id_collection.update_one({'orig_id': orig_id}, {'$set': {'mal_id': mal_id}}, upsert=True)
 
 @app.route('/search', methods=['GET'])
 def search():
@@ -64,13 +83,14 @@ def search():
             if len(parts) != 3:
                 continue
             orig_id, title, episodes = parts
-            mal_id = get_mal_id(title)
-            # map and use MAL id
-            if mal_id:
-                id_map[str(mal_id)] = orig_id
-                use_id = mal_id
+            # check existing mapping by internal id
+            mapping = id_collection.find_one({'orig_id': orig_id})
+            if mapping is not None:
+                mal_id = mapping.get('mal_id')  # may be None
             else:
-                use_id = None
+                mal_id = get_mal_id(title)
+                save_mapping(mal_id, orig_id)
+            use_id = mal_id
             result.append({
                 "id": use_id,
                 "title": title,
@@ -82,8 +102,8 @@ def search():
 
 @app.route('/episodes/<mal_id>', methods=['GET'])
 def episodes(mal_id):
-    # lookup internal ID
-    orig_id = id_map.get(mal_id)
+    # lookup internal anime.sh ID from MongoDB
+    orig_id = get_orig_id(mal_id)
     if not orig_id:
         return jsonify({"error": "MAL id not found"}), 404
     try:
@@ -96,7 +116,7 @@ def episodes(mal_id):
 @app.route('/episode_url', methods=['GET'])
 def episode_url():
     mal_id = request.args.get('show_id', '')
-    orig_id = id_map.get(mal_id)
+    orig_id = get_orig_id(mal_id)
     if not orig_id:
         return jsonify({"error": "MAL id not found"}), 404
     ep_no = request.args.get('ep_no', '')
