@@ -39,7 +39,7 @@ def get_mal_id(anime_title):
         data = response.json()
         if "data" in data:
             for anime in data["data"]:
-                if sanitize_string(anime_title) == sanitize_string(anime["title"]):
+                if sanitize_string(anime_title) == sanitize_string(anime["title"]) or sanitize_string(anime_title) == sanitize_string(anime["title_english"]):
                     return anime["mal_id"]
         else:
             print("[WARN] No data found from Jikan API for title:", anime_title)
