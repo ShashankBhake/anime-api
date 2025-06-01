@@ -4,3 +4,4 @@ gunicorn
 requests
 python-dotenv
 pymongo
+rapidfuzz
