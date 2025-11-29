@@ -119,9 +119,10 @@ def search():
         result = []
         for line in lines:
             parts = line.split("\t")
-            if len(parts) != 3:
+            # Now expecting 4 parts: orig_id, title, sub_episodes, dub_episodes
+            if len(parts) != 4:
                 continue
-            orig_id, title, episodes = parts
+            orig_id, title, sub_episodes, dub_episodes = parts
             mapping = id_collection.find_one({'orig_id': orig_id})
             if mapping is not None:
                 mal_id = mapping.get('mal_id')
@@ -135,7 +136,8 @@ def search():
             result.append({
                 "id": use_id,
                 "title": title,
-                "episodes": int(episodes)
+                "episodes_sub": int(sub_episodes) if sub_episodes.isdigit() else 0,
+                "episodes_dub": int(dub_episodes) if dub_episodes.isdigit() else 0
             })
         return jsonify(result)
     except Exception as e:
@@ -146,10 +148,14 @@ def episodes(mal_id):
     orig_id = get_orig_id(mal_id)
     if not orig_id:
         return make_response(jsonify({"error": "MAL id not found"}), 404)
+    # Get mode parameter (sub or dub), default to sub
+    mode = request.args.get('mode', 'sub')
+    if mode not in ['sub', 'dub']:
+        mode = 'sub'
     try:
-        output = subprocess.check_output(['./anime.sh', f'/episodes/{orig_id}'])
+        output = subprocess.check_output(['./anime.sh', f'/episodes/{orig_id}', f'mode={mode}'])
         data = json.loads(output.decode('utf-8'))
-        return jsonify(data)
+        return jsonify({"mode": mode, "episodes": data})
     except Exception as e:
         return make_response(jsonify({"error": str(e)}), 500)
 
@@ -161,10 +167,15 @@ def episode_url():
         return make_response(jsonify({"error": "MAL id not found"}), 404)
     ep_no = request.args.get('ep_no', '')
     quality = request.args.get('quality', 'best')
-    params = f"show_id={orig_id}&ep_no={ep_no}&quality={quality}"
+    # Get mode parameter (sub or dub), default to sub
+    mode = request.args.get('mode', 'sub')
+    if mode not in ['sub', 'dub']:
+        mode = 'sub'
+    params = f"show_id={orig_id}&ep_no={ep_no}&quality={quality}&mode={mode}"
     try:
         output = subprocess.check_output(['./anime.sh', '/episode_url', params])
         data = json.loads(output.decode('utf-8'))
+        data['mode'] = mode  # Include mode in response for clarity
         return jsonify(data)
     except Exception as e:
         return make_response(jsonify({"error": str(e)}), 500)
@@ -177,8 +188,8 @@ def index():
         "help": "https://github.com/shashankbhake/anime-api",
         "available_endpoints": [
             "/search?query=<query>",
-            "/episodes/<show_id>",
-            "/episode_url?show_id=<show_id>&ep_no=<ep_no>&quality=<quality>"
+            "/episodes/<show_id>?mode=<sub|dub>",
+            "/episode_url?show_id=<show_id>&ep_no=<ep_no>&quality=<quality>&mode=<sub|dub>"
         ]
     })
 

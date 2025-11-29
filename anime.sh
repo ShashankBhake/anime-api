@@ -11,7 +11,7 @@ agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefo
 allanime_refr="https://allmanga.to"
 allanime_base="allanime.day"
 allanime_api="https://api.${allanime_base}"
-mode="sub"
+mode="sub"  # Default mode, can be overridden by query parameter
 quality="best"
 
 die() {
@@ -78,7 +78,8 @@ select_quality() {
 }
 
 get_episode_url() {
-    # Expects: id, ep_no, quality are already set
+    # Expects: id, ep_no, quality, mode are already set
+    # mode determines whether to fetch sub or dub version
     episode_embed_gql="query (\$showId: String!, \$translationType: VaildTranslationTypeEnumType!, \$episodeString: String!) { episode( showId: \$showId translationType: \$translationType episodeString: \$episodeString ) { episodeString sourceUrls }}"
     resp=$(curl -e "$allanime_refr" -s -G "${allanime_api}/api" \
         --data-urlencode "variables={\"showId\":\"$id\",\"translationType\":\"$mode\",\"episodeString\":\"$ep_no\"}" \
@@ -98,15 +99,17 @@ get_episode_url() {
 
 search_anime() {
     # Expects: query variable is set.
-    search_gql="query(\$search: SearchInput \$limit: Int \$page: Int \$translationType: VaildTranslationTypeEnumType \$countryOrigin: VaildCountryOriginEnumType) { shows( search: \$search limit: \$limit page: \$page translationType: \$translationType countryOrigin: \$countryOrigin ) { edges { _id name availableEpisodes __typename } }}"
+    # Returns: id, title, sub_episodes, dub_episodes (tab separated)
+    search_gql="query(\$search: SearchInput \$limit: Int \$page: Int \$countryOrigin: VaildCountryOriginEnumType) { shows( search: \$search limit: \$limit page: \$page countryOrigin: \$countryOrigin ) { edges { _id name availableEpisodes __typename } }}"
     curl -e "$allanime_refr" -s -G "${allanime_api}/api" \
-        --data-urlencode "variables={\"search\":{\"allowAdult\":false,\"allowUnknown\":false,\"query\":\"$query\"},\"limit\":40,\"page\":1,\"translationType\":\"$mode\",\"countryOrigin\":\"ALL\"}" \
+        --data-urlencode "variables={\"search\":{\"allowAdult\":false,\"allowUnknown\":false,\"query\":\"$query\"},\"limit\":40,\"page\":1,\"countryOrigin\":\"ALL\"}" \
         --data-urlencode "query=$search_gql" -A "$agent" | sed 's|Show|\
-|g' | sed -nE "s|.*_id\":\"([^\"]*)\",\"name\":\"([^\"]+)\",.*${mode}\":([1-9][^,]*).*|\1\t\2\t\3|p" | sed 's/\\"//g'
+|g' | sed -nE 's|.*_id":"([^"]*)","name":"([^"]+)".*"sub":([0-9]+).*"dub":([0-9]+).*|\1\t\2\t\3\t\4|p; s|.*_id":"([^"]*)","name":"([^"]+)".*"sub":([0-9]+).*"dub":null.*|\1\t\2\t\3\t0|p; s|.*_id":"([^"]*)","name":"([^"]+)".*"sub":null.*"dub":([0-9]+).*|\1\t\2\t0\t\3|p' | sed 's/\\"//g'
 }
 
 episodes_list() {
-    # Expects: show id as argument ($1)
+    # Expects: show id as argument ($1), mode variable is set (sub/dub)
+    # Returns episode numbers based on current mode (sub or dub)
     episodes_list_gql="query (\$showId: String!) { show( _id: \$showId ) { _id availableEpisodesDetail }}"
     curl -e "$allanime_refr" -s -G "${allanime_api}/api" \
         --data-urlencode "variables={\"showId\":\"$1\"}" \
@@ -132,6 +135,13 @@ parse_query() {
             ep_no) ep_no="$value" ;;
             quality) quality="$value" ;;
             raw) raw="$value" ;;
+            mode) 
+                # Validate mode is either sub or dub
+                case "$value" in
+                    sub|dub) mode="$value" ;;
+                    *) mode="sub" ;;  # Default to sub if invalid
+                esac
+                ;;
         esac
     done
 }

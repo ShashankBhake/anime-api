@@ -2,65 +2,116 @@
 
 ## Overview
 
-Search for anime titles, retrieve episode lists, and get playback URLs for specific episodes.
+Search for anime titles, retrieve episode lists, and get playback URLs for specific episodes. Supports both **subbed** and **dubbed** versions.
 
 ## Endpoints
 
 ### 1. `/search`
 
--   **Method**: GET
--   **Description**: Search for anime titles.
--   **Request**:
-    ```
-    GET https://allanime-api.up.railway.app/search?query=death%20note
-    ```
--   **Response**:
-    ```json
-    [
-        {
-            "episodes": 1,
-            "id": null,
-            "title": "Death Note Rewrite: The Visualizing God"
-        },
-        {
-            "episodes": 1,
-            "id": 2994,
-            "title": "Death Note: Rewrite"
-        },
-        {
-            "episodes": 37,
-            "id": 1535,
-            "title": "Death Note"
-        }
-    ]
-    ```
+-   **Method:** GET
+-   **Description:** Search for anime titles. Returns both sub and dub episode counts.
+
+**Request:**
+
+```http
+GET /search?query=death%20note
+```
+
+**Response:**
+
+```json
+[
+    {
+        "id": null,
+        "title": "Death Note Rewrite: The Visualizing God",
+        "episodes_sub": 1,
+        "episodes_dub": 0
+    },
+    {
+        "id": 2994,
+        "title": "Death Note: Rewrite",
+        "episodes_sub": 1,
+        "episodes_dub": 1
+    },
+    {
+        "id": 1535,
+        "title": "Death Note",
+        "episodes_sub": 37,
+        "episodes_dub": 37
+    }
+]
+```
+
+---
 
 ### 2. `/episodes/<show_id>`
 
--   **Method**: GET
--   **Description**: Retrieve a list of episode numbers for a given anime.
--   **Request**:
-    ```
-    GET https://allanime-api.up.railway.app/episodes/1535
-    ```
--   **Response**:
-    ```json
-    [
-        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37
-    ]
-    ```
+-   **Method:** GET
+-   **Description:** Retrieve a list of episode numbers for a given anime.
+
+**Parameters:**
+
+| Parameter | Required | Default | Description                                                     |
+| --------- | -------- | ------- | --------------------------------------------------------------- |
+| `mode`    | No       | `sub`   | `sub` or `dub` - specifies which version's episodes to retrieve |
+
+**Request:**
+
+```http
+GET /episodes/1535
+GET /episodes/1535?mode=dub
+```
+
+**Response:**
+
+```json
+{
+    "mode": "sub",
+    "episodes": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+}
+```
+
+> **Note:** Sub and dub versions may have different episode counts. For example, an anime might have 24 subbed episodes but only 12 dubbed episodes if the dub is still in progress.
+
+---
 
 ### 3. `/episode_url`
 
--   **Method**: GET
--   **Description**: Retrieve the playback URL for a specific anime episode.
--   **Request**:
-    ```
-    GET https://allanime-api.up.railway.app/episode_url?show_id=1535&ep_no=1&quality=best
-    ```
--   **Response**:
-    ```json
-    {
-        "episode_url": "https://myanime.sharepoint.com/sites/anime/_layouts/15/download.aspx?share=EdX2QuABJpNIhTzl8_M49t4By_4PIuMwLnO3HVAlXAwi4Q"
-    }
-    ```
+-   **Method:** GET
+-   **Description:** Retrieve the playback URL for a specific anime episode.
+
+**Parameters:**
+
+| Parameter | Required | Default | Description                                        |
+| --------- | -------- | ------- | -------------------------------------------------- |
+| `show_id` | Yes      | -       | The MAL ID of the anime                            |
+| `ep_no`   | Yes      | -       | Episode number                                     |
+| `quality` | No       | `best`  | Video quality                                      |
+| `mode`    | No       | `sub`   | `sub` or `dub` - specifies which version to stream |
+
+**Request:**
+
+```http
+GET /episode_url?show_id=1535&ep_no=1&quality=best
+GET /episode_url?show_id=1535&ep_no=1&quality=best&mode=dub
+```
+
+**Response:**
+
+```json
+{
+    "episode_url": "https://example.com/stream/...",
+    "mode": "dub"
+}
+```
+
+---
+
+## Sub vs Dub
+
+| Mode  | Description                                    |
+| ----- | ---------------------------------------------- |
+| `sub` | Original Japanese audio with English subtitles |
+| `dub` | English voice-over audio                       |
+
+The `mode` parameter defaults to `sub` if not specified. Always check `episodes_sub` and `episodes_dub` counts from the search results before requesting a specific episode, as dub releases often lag behind sub releases.
