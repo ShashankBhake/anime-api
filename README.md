@@ -8,8 +8,8 @@ Search for anime titles, retrieve episode lists, and get playback URLs for speci
 
 ### 1. `/search`
 
--   **Method:** GET
--   **Description:** Search for anime titles. Returns both sub and dub episode counts.
+- **Method:** GET
+- **Description:** Search for anime titles. Returns both sub and dub episode counts.
 
 **Request:**
 
@@ -44,10 +44,43 @@ GET /search?query=death%20note
 
 ---
 
-### 2. `/episodes/<show_id>`
+### 2. `/anime/<mal_id>`
 
--   **Method:** GET
--   **Description:** Retrieve a list of episode numbers for a given anime.
+- **Method:** GET
+- **Description:** Retrieve detailed information about a specific anime by its MyAnimeList ID. Returns cached metadata (including thumbnail, synopsis, score, etc.) and the calculated episode count (sub).
+
+**Request:**
+
+```http
+GET /anime/21
+```
+
+**Response:**
+
+```json
+{
+    "mal_id": 21,
+    "title": "One Piece",
+    "title_english": "One Piece",
+    "thumbnail_url": "https://cdn.myanimelist.net/images/anime/1244/138851l.jpg",
+    "synopsis": "Barely surviving in a barrel after passing through a terrible whirlpool at sea...",
+    "score": 8.73,
+    "genres": [
+        { "mal_id": 1, "type": "anime", "name": "Action", "url": "..." },
+        { "mal_id": 2, "type": "anime", "name": "Adventure", "url": "..." }
+    ],
+    "episode_count": 1092,
+    "status": "Currently Airing",
+    "year": 1999
+}
+```
+
+---
+
+### 3. `/episodes/<show_id>`
+
+- **Method:** GET
+- **Description:** Retrieve a list of episode numbers for a given anime.
 
 **Parameters:**
 
@@ -75,10 +108,10 @@ GET /episodes/1535?mode=dub
 
 ---
 
-### 3. `/episode_url`
+### 4. `/episode_url`
 
--   **Method:** GET
--   **Description:** Retrieve the playback URL for a specific anime episode.
+- **Method:** GET
+- **Description:** Retrieve the playback URL for a specific anime episode.
 
 **Parameters:**
 

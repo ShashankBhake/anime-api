@@ -54,7 +54,7 @@ def combined_similarity(title1, title2):
 def get_mal_id(anime_title):
     """
     Use the Jikan API to search for the anime by title and return the exact
-    MyAnimeList (MAL) id if found, using combined_similarity for matching.
+    MyAnimeList (MAL) id and data if found, using combined_similarity for matching.
     """
     search_url = f"https://api.jikan.moe/v4/anime?q={anime_title}"
     try:
@@ -63,6 +63,7 @@ def get_mal_id(anime_title):
         data = response.json()
         if "data" in data:
             best_id = None
+            best_anime = None
             best_score = 0.0
             for anime in data["data"]:
                 score1 = combined_similarity(anime_title, anime.get("title_english") or "")
@@ -71,13 +72,14 @@ def get_mal_id(anime_title):
                 if score > best_score:
                     best_score = score
                     best_id = anime["mal_id"]
+                    best_anime = anime
             if best_score > 0.85:  # threshold for a good match
-                return best_id
+                return best_id, best_anime
             else:
-                return None
+                return None, None
         else:
             # No data found, return None
-            return None
+            return None, None
     except Exception as e:
         # Instead of print, raise to be handled by route
         raise RuntimeError(json.dumps({'error': f'Failed to get MAL id: {str(e)}'}))
@@ -104,9 +106,16 @@ def get_orig_id(mal_id):
     except Exception as e:
         return None
 
-def save_mapping(mal_id, orig_id):
+def save_mapping(mal_id, orig_id, anime_data=None):
     try:
-        id_collection.update_one({'orig_id': orig_id}, {'$set': {'mal_id': mal_id}}, upsert=True)
+        update_doc = {'mal_id': mal_id}
+        if anime_data:
+            # remove duplicates if necessary, but $set merges
+            if 'mal_id' in anime_data:
+                del anime_data['mal_id']
+            update_doc.update(anime_data)
+            
+        id_collection.update_one({'orig_id': orig_id}, {'$set': update_doc}, upsert=True)
     except Exception as e:
         pass
 
@@ -128,10 +137,10 @@ def search():
                 mal_id = mapping.get('mal_id')
             else:
                 try:
-                    mal_id = get_mal_id(title)
+                    mal_id, anime_data = get_mal_id(title)
                 except Exception as e:
                     return make_response(jsonify({'error': f'Failed to get MAL id: {str(e)}'}), 500)
-                save_mapping(mal_id, orig_id)
+                save_mapping(mal_id, orig_id, anime_data)
             use_id = mal_id
             result.append({
                 "id": use_id,
@@ -156,6 +165,55 @@ def episodes(mal_id):
         output = subprocess.check_output(['./anime.sh', f'/episodes/{orig_id}', f'mode={mode}'])
         data = json.loads(output.decode('utf-8'))
         return jsonify({"mode": mode, "episodes": data})
+    except Exception as e:
+        return make_response(jsonify({"error": str(e)}), 500)
+
+@app.route('/anime/<mal_id>', methods=['GET'])
+def anime_details(mal_id):
+    try:
+        try:
+            m_id = int(mal_id)
+        except ValueError:
+            return make_response(jsonify({"error": "Invalid MAL ID format"}), 400)
+
+        # Retrieve from DB
+        entry = id_collection.find_one({'mal_id': m_id})
+        if not entry:
+            return make_response(jsonify({"error": "MAL id not found in database"}), 404)
+        
+        # Extract thumbnail (prefer large)
+        images = entry.get('images', {})
+        jpg_data = images.get('jpg', {})
+        thumbnail_url = jpg_data.get('large_image_url') or jpg_data.get('image_url')
+        
+        # Get episode count by invoking anime.sh
+        episode_count = 0
+        orig_id = entry.get('orig_id')
+        if orig_id:
+            try:
+                # Running the script for 'sub' mode to count episodes
+                output = subprocess.check_output(['./anime.sh', f'/episodes/{orig_id}', 'mode=sub'])
+                ep_data = json.loads(output.decode('utf-8'))
+                if isinstance(ep_data, (list, dict)):
+                    episode_count = len(ep_data)
+            except Exception:
+                # Fallback: try querying available episode count from DB metadata if scrape fails
+                episode_count = entry.get('episodes') or 0
+        
+        # Construct response with relevant data
+        data = {
+            "mal_id": entry.get('mal_id'),
+            "title": entry.get('title'),
+            "title_english": entry.get('title_english'),
+            "thumbnail_url": thumbnail_url,
+            "synopsis": entry.get('synopsis'),
+            "score": entry.get('score'),
+            "genres": entry.get('genres', []),
+            "episode_count": episode_count,
+            "status": entry.get('status'),
+            "year": entry.get('year')
+        }
+        return jsonify(data)
     except Exception as e:
         return make_response(jsonify({"error": str(e)}), 500)
 
@@ -188,6 +246,7 @@ def index():
         "help": "https://github.com/shashankbhake/anime-api",
         "available_endpoints": [
             "/search?query=<query>",
+            "/anime/<mal_id>",
             "/episodes/<show_id>?mode=<sub|dub>",
             "/episode_url?show_id=<show_id>&ep_no=<ep_no>&quality=<quality>&mode=<sub|dub>"
         ]
