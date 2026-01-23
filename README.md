@@ -2,7 +2,7 @@
 
 ## Overview
 
-Search for anime titles, retrieve episode lists, and get playback URLs for specific episodes. Supports both **subbed** and **dubbed** versions.
+Search for anime titles, retrieve episode lists, get detailed metadata, and get playback URLs. Supports both **subbed** and **dubbed** versions.
 
 ## Endpoints
 
@@ -77,7 +77,35 @@ GET /anime/21
 
 ---
 
-### 3. `/episodes/<show_id>`
+### 3. `/thumbnails`
+
+- **Method:** POST
+- **Description:** Retrieve thumbnails for multiple anime IDs in a single request.
+- **Body:** `{"mal_ids": [mal_id1, mal_id2, ...]}`
+
+**Request:**
+
+```http
+POST /thumbnails
+Content-Type: application/json
+
+{
+    "mal_ids": [21, 1535]
+}
+```
+
+**Response:**
+
+```json
+{
+    "21": "https://cdn.myanimelist.net/images/anime/1244/138851l.jpg",
+    "1535": "https://cdn.myanimelist.net/images/anime/10/19967l.jpg"
+}
+```
+
+---
+
+### 4. `/episodes/<show_id>`
 
 - **Method:** GET
 - **Description:** Retrieve a list of episode numbers for a given anime.
@@ -108,7 +136,7 @@ GET /episodes/1535?mode=dub
 
 ---
 
-### 4. `/episode_url`
+### 5. `/episode_url`
 
 - **Method:** GET
 - **Description:** Retrieve the playback URL for a specific anime episode.

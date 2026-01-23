@@ -238,6 +238,46 @@ def episode_url():
     except Exception as e:
         return make_response(jsonify({"error": str(e)}), 500)
 
+@app.route('/thumbnails', methods=['POST'])
+def get_thumbnails():
+    try:
+        data = request.get_json()
+        if not data or 'mal_ids' not in data:
+            return make_response(jsonify({"error": "Missing 'mal_ids' list in request body"}), 400)
+        
+        mal_ids = data['mal_ids']
+        if not isinstance(mal_ids, list):
+             return make_response(jsonify({"error": "'mal_ids' must be a list"}), 400)
+
+        # Convert to integers safely
+        try:
+            target_ids = [int(i) for i in mal_ids]
+        except ValueError:
+             return make_response(jsonify({"error": "MAL IDs must be integers"}), 400)
+
+        # Efficient query using $in
+        cursor = id_collection.find(
+            {'mal_id': {'$in': target_ids}},
+            {'mal_id': 1, 'images': 1, '_id': 0}
+        )
+
+        results = {}
+        for doc in cursor:
+            mal_id = doc.get('mal_id')
+            images = doc.get('images', {})
+            jpg_data = images.get('jpg', {})
+            # Prefer large, then normal
+            thumb = jpg_data.get('large_image_url') or jpg_data.get('image_url')
+            if mal_id:
+                results[str(mal_id)] = thumb
+
+        # Fill in missing IDs with null if needed, or just return found ones. 
+        # Returning found ones is standard for this kind of "get specific fields" endpoint.
+        
+        return jsonify(results)
+    except Exception as e:
+        return make_response(jsonify({"error": str(e)}), 500)
+
 @app.route('/', methods=['GET'])
 def index():
     return jsonify({
@@ -247,6 +287,7 @@ def index():
         "available_endpoints": [
             "/search?query=<query>",
             "/anime/<mal_id>",
+            "/thumbnails (POST with {'mal_ids': [1, 2, ...]})",
             "/episodes/<show_id>?mode=<sub|dub>",
             "/episode_url?show_id=<show_id>&ep_no=<ep_no>&quality=<quality>&mode=<sub|dub>"
         ]
