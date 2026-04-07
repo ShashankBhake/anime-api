@@ -81,9 +81,8 @@ get_episode_url() {
     # Expects: id, ep_no, quality, mode are already set
     # mode determines whether to fetch sub or dub version
     episode_embed_gql="query (\$showId: String!, \$translationType: VaildTranslationTypeEnumType!, \$episodeString: String!) { episode( showId: \$showId translationType: \$translationType episodeString: \$episodeString ) { episodeString sourceUrls }}"
-    resp=$(curl -e "$allanime_refr" -s -G "${allanime_api}/api" \
-        --data-urlencode "variables={\"showId\":\"$id\",\"translationType\":\"$mode\",\"episodeString\":\"$ep_no\"}" \
-        --data-urlencode "query=$episode_embed_gql" -A "$agent" | tr '{}' '\n' | sed 's|\\u002F|\/|g;s|\\||g' | sed -nE 's|.*sourceUrl":"--([^"]*)".*sourceName":"([^"]*)".*|\2 :\1|p')
+    resp=$(curl -e "$allanime_refr" -s -H "Content-Type: application/json" -X POST "${allanime_api}/api" \
+        --data "{\"variables\":{\"showId\":\"$id\",\"translationType\":\"$mode\",\"episodeString\":\"$ep_no\"},\"query\":\"$episode_embed_gql\"}" -A "$agent" | tr '{}' '\n' | sed 's|\\u002F|\/|g;s|\\||g' | sed -nE 's|.*sourceUrl":"--([^"]*)".*sourceName":"([^"]*)".*|\2 :\1|p')
     cache_dir="$(mktemp -d)"
     providers="1 2 3 4 5"
     for provider in $providers; do
@@ -101,9 +100,8 @@ search_anime() {
     # Expects: query variable is set.
     # Returns: id, title, sub_episodes, dub_episodes (tab separated)
     search_gql="query(\$search: SearchInput \$limit: Int \$page: Int \$countryOrigin: VaildCountryOriginEnumType) { shows( search: \$search limit: \$limit page: \$page countryOrigin: \$countryOrigin ) { edges { _id name availableEpisodes __typename } }}"
-    curl -e "$allanime_refr" -s -G "${allanime_api}/api" \
-        --data-urlencode "variables={\"search\":{\"allowAdult\":false,\"allowUnknown\":false,\"query\":\"$query\"},\"limit\":40,\"page\":1,\"countryOrigin\":\"ALL\"}" \
-        --data-urlencode "query=$search_gql" -A "$agent" | sed 's|Show|\
+    curl -e "$allanime_refr" -s -H "Content-Type: application/json" -X POST "${allanime_api}/api" \
+        --data "{\"variables\":{\"search\":{\"allowAdult\":false,\"allowUnknown\":false,\"query\":\"$query\"},\"limit\":40,\"page\":1,\"countryOrigin\":\"ALL\"},\"query\":\"$search_gql\"}" -A "$agent" | sed 's|Show|\
 |g' | sed -nE 's|.*_id":"([^"]*)","name":"([^"]+)".*"sub":([0-9]+).*"dub":([0-9]+).*|\1\t\2\t\3\t\4|p; s|.*_id":"([^"]*)","name":"([^"]+)".*"sub":([0-9]+).*"dub":null.*|\1\t\2\t\3\t0|p; s|.*_id":"([^"]*)","name":"([^"]+)".*"sub":null.*"dub":([0-9]+).*|\1\t\2\t0\t\3|p' | sed 's/\\"//g'
 }
 
@@ -111,9 +109,8 @@ episodes_list() {
     # Expects: show id as argument ($1), mode variable is set (sub/dub)
     # Returns episode numbers based on current mode (sub or dub)
     episodes_list_gql="query (\$showId: String!) { show( _id: \$showId ) { _id availableEpisodesDetail }}"
-    curl -e "$allanime_refr" -s -G "${allanime_api}/api" \
-        --data-urlencode "variables={\"showId\":\"$1\"}" \
-        --data-urlencode "query=$episodes_list_gql" -A "$agent" | sed -nE "s|.*$mode\":\[([0-9.\",]*)\].*|\1|p" | sed 's|,|\
+    curl -e "$allanime_refr" -s -H "Content-Type: application/json" -X POST "${allanime_api}/api" \
+        --data "{\"variables\":{\"showId\":\"$1\"},\"query\":\"$episodes_list_gql\"}" -A "$agent" | sed -nE "s|.*$mode\":\[([0-9.\",]*)\].*|\1|p" | sed 's|,|\
 |g; s|"||g' | sort -n -k 1
 }
 
