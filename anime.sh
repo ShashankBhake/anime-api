@@ -11,8 +11,11 @@ agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefo
 allanime_refr="https://allmanga.to"
 allanime_base="allanime.day"
 allanime_api="https://api.${allanime_base}"
+allanime_key="$(printf '%s' 'SimtVuagFbGR2K7P' | openssl dgst -sha256 -binary | od -A n -t x1 | tr -d ' \n')"
 mode="sub"  # Default mode, can be overridden by query parameter
 quality="best"
+LC_ALL=C
+export LC_ALL
 
 die() {
     echo "{\"error\": \"${1}\"}"
@@ -24,7 +27,8 @@ die() {
 # ------------------------------
 
 get_links() {
-    episode_link="$(curl -e "$allanime_refr" -s "https://${allanime_base}$*" -A "$agent" | sed 's|},{|\
+    response="$(curl -e "$allanime_refr" -s "https://${allanime_base}$*" -A "$agent")"
+    episode_link="$(printf '%s' "$response" | sed 's|},{|\
 |g' | sed -nE 's|.*link":"([^"]*)".*"resolutionStr":"([^"]*)".*|\2 >\1|p;s|.*hls","url":"([^"]*)".*"hardsub_lang":"en-US".*|\1|p')"
 
     case "$episode_link" in
@@ -35,33 +39,36 @@ get_links() {
             printf "%s >%s\n" "$j" "$extract_link" | sed "s|,[^/]*|${j}|g"
         done | sort -nr
         ;;
-    *vipanicdn* | *anifastcdn*)
-        if printf "%s" "$episode_link" | head -1 | grep -q "original.m3u"; then
-            printf "%s" "$episode_link"
-        else
-            extract_link=$(printf "%s" "$episode_link" | head -1 | cut -d'>' -f2)
-            relative_link=$(printf "%s" "$extract_link" | sed 's|[^/]*$||')
-            curl -e "$allanime_refr" -s "$extract_link" -A "$agent" | sed 's|^#.*x||g; s|,.*|p|g; /^#/d; $!N; s|\
-| >|' | sed "s|>|>${relative_link}|g" | sort -nr
+    *master.m3u8*)
+        m3u8_refr=$(printf '%s' "$response" | sed -nE 's|.*Referer":"([^"]*)".*|\1|p')
+        [ -n "$m3u8_refr" ] && printf '%s\n' "m3u8_refr >$m3u8_refr"
+        extract_link=$(printf "%s" "$episode_link" | head -1 | cut -d'>' -f2)
+        relative_link=$(printf "%s" "$extract_link" | sed 's|[^/]*$||')
+        m3u8_streams="$(curl -e "$m3u8_refr" -s "$extract_link" -A "$agent")"
+        if printf "%s" "$m3u8_streams" | grep -q "EXTM3U"; then
+            printf "%s" "$m3u8_streams" | sed 's|^#EXT-X-STREAM.*x||g; s|,.*|p|g; /^#/d; $!N; s|\n| >|;/EXT-X-I-FRAME/d' |
+                sed "s|>|cc>${relative_link}|g" | sort -nr
         fi
+        printf '%s' "$response" | sed -nE 's|.*"subtitles":\[\{"lang":"en","label":"English","default":"default","src":"([^"]*)".*|subtitle >\1|p'
         ;;
     *) [ -n "$episode_link" ] && printf "%s\n" "$episode_link" ;;
     esac
+
+    printf "%s" "$*" | grep -q "tools.fast4speed.rsvp" && printf "%s\n" "Yt >$*"
 }
 
 provider_init() {
     provider_name=$1
     provider_id=$(printf "%s" "$resp" | sed -n "$2" | head -1 | cut -d':' -f2 | sed 's/../&\
-/g' | sed 's/^01$/9/g;s/^08$/0/g;s/^05$/=/g;s/^0a$/2/g;s/^0b$/3/g;s/^0c$/4/g;s/^07$/?/g;s/^00$/8/g;s/^5c$/d/g;s/^0f$/7/g;s/^5e$/f/g;s/^17$/\//g;s/^54$/l/g;s/^09$/1/g;s/^48$/p/g;s/^4f$/w/g;s/^0e$/6/g;s/^5b$/c/g;s/^5d$/e/g;s/^0d$/5/g;s/^53$/k/g;s/^1e$/\&/g;s/^5a$/b/g;s/^59$/a/g;s/^4a$/r/g;s/^4c$/t/g;s/^4e$/v/g;s/^57$/o/g;s/^51$/i/g;' | tr -d '\n' | sed "s/\/clock/\/clock\.json/")
+/g' | sed 's/^79$/A/g;s/^7a$/B/g;s/^7b$/C/g;s/^7c$/D/g;s/^7d$/E/g;s/^7e$/F/g;s/^7f$/G/g;s/^70$/H/g;s/^71$/I/g;s/^72$/J/g;s/^73$/K/g;s/^74$/L/g;s/^75$/M/g;s/^76$/N/g;s/^77$/O/g;s/^68$/P/g;s/^69$/Q/g;s/^6a$/R/g;s/^6b$/S/g;s/^6c$/T/g;s/^6d$/U/g;s/^6e$/V/g;s/^6f$/W/g;s/^60$/X/g;s/^61$/Y/g;s/^62$/Z/g;s/^59$/a/g;s/^5a$/b/g;s/^5b$/c/g;s/^5c$/d/g;s/^5d$/e/g;s/^5e$/f/g;s/^5f$/g/g;s/^50$/h/g;s/^51$/i/g;s/^52$/j/g;s/^53$/k/g;s/^54$/l/g;s/^55$/m/g;s/^56$/n/g;s/^57$/o/g;s/^48$/p/g;s/^49$/q/g;s/^4a$/r/g;s/^4b$/s/g;s/^4c$/t/g;s/^4d$/u/g;s/^4e$/v/g;s/^4f$/w/g;s/^40$/x/g;s/^41$/y/g;s/^42$/z/g;s/^08$/0/g;s/^09$/1/g;s/^0a$/2/g;s/^0b$/3/g;s/^0c$/4/g;s/^0d$/5/g;s/^0e$/6/g;s/^0f$/7/g;s/^00$/8/g;s/^01$/9/g;s/^15$/-/g;s/^16$/./g;s/^67$/_/g;s/^46$/~/g;s/^02$/:/g;s/^17$/\//g;s/^07$/?/g;s/^1b$/#/g;s/^63$/\[/g;s/^65$/\]/g;s/^78$/@/g;s/^19$/!/g;s/^1c$/$/g;s/^1e$/\&/g;s/^10$/\(/g;s/^11$/\)/g;s/^12$/*/g;s/^13$/+/g;s/^14$/,/g;s/^03$/;/g;s/^05$/=/g;s/^1d$/%/g' | tr -d '\n' | sed "s/\/clock/\/clock\.json/")
 }
 
 generate_link() {
     case $1 in
-    1) provider_init "wixmp" "/Default :/p" ;;     # wixmp (default)
-    2) provider_init "dropbox" "/Sak :/p" ;;       # dropbox
-    3) provider_init "wetransfer" "/Kir :/p" ;;    # wetransfer
-    4) provider_init "sharepoint" "/S-mp4 :/p" ;;  # sharepoint
-    *) provider_init "gogoanime" "/Luf-mp4 :/p" ;; # gogoanime
+    1) provider_init "wixmp" "/Default :/p" ;;
+    2) provider_init "youtube" "/Yt-mp4 :/p" ;;
+    3) provider_init "sharepoint" "/S-mp4 :/p" ;;
+    *) provider_init "hianime" "/Luf-Mp4 :/p" ;;
     esac
     [ -n "$provider_id" ] && get_links "$provider_id"
 }
@@ -81,15 +88,29 @@ get_episode_url() {
     # Expects: id, ep_no, quality, mode are already set
     # mode determines whether to fetch sub or dub version
     episode_embed_gql="query (\$showId: String!, \$translationType: VaildTranslationTypeEnumType!, \$episodeString: String!) { episode( showId: \$showId translationType: \$translationType episodeString: \$episodeString ) { episodeString sourceUrls }}"
-    resp=$(curl -e "$allanime_refr" -s -H "Content-Type: application/json" -X POST "${allanime_api}/api" \
-        --data "{\"variables\":{\"showId\":\"$id\",\"translationType\":\"$mode\",\"episodeString\":\"$ep_no\"},\"query\":\"$episode_embed_gql\"}" -A "$agent" | tr '{}' '\n' | sed 's|\\u002F|\/|g;s|\\||g' | sed -nE 's|.*sourceUrl":"--([^"]*)".*sourceName":"([^"]*)".*|\2 :\1|p')
+    api_resp=$(curl -e "$allanime_refr" -s -H "Content-Type: application/json" -X POST "${allanime_api}/api" \
+        --data "{\"variables\":{\"showId\":\"$id\",\"translationType\":\"$mode\",\"episodeString\":\"$ep_no\"},\"query\":\"$episode_embed_gql\"}" -A "$agent")
+
+    if printf "%s" "$api_resp" | grep -q '"tobeparsed"'; then
+        blob="$(printf "%s" "$api_resp" | sed -nE 's|.*"tobeparsed":"([^"]*)".*|\1|p')"
+        tmp="$(mktemp)"
+        printf '%s' "$blob" | base64 -d >"$tmp"
+        iv="$(dd if="$tmp" bs=1 count=12 2>/dev/null | od -A n -t x1 | tr -d ' \n')"
+        ctr="${iv}00000002"
+        plain="$(dd if="$tmp" bs=1 skip=12 2>/dev/null | openssl enc -d -aes-256-ctr -K "$allanime_key" -iv "$ctr" -nosalt -nopad 2>/dev/null)"
+        rm -f "$tmp"
+        resp="$(LC_ALL=C printf '%s' "$plain" | LC_ALL=C tr '{}' '\n' | sed -nE 's|.*"sourceUrl":"--([^"]*)".*"sourceName":"([^"]*)".*|\2 :\1|p')"
+    else
+        resp="$(LC_ALL=C printf "%s" "$api_resp" | LC_ALL=C tr '{}' '\n' | sed 's|\\u002F|\/|g;s|\\||g' | sed -nE 's|.*sourceUrl":"--([^"]*)".*sourceName":"([^"]*)".*|\2 :\1|p')"
+    fi
+
     cache_dir="$(mktemp -d)"
-    providers="1 2 3 4 5"
+    providers="1 2 3 4"
     for provider in $providers; do
         generate_link "$provider" >"$cache_dir/$provider" &
     done
     wait
-    links=$(cat "$cache_dir"/* | sed 's|^Mp4-||g;/http/!d;/Alt/d' | sort -g -r -s)
+    links=$(cat "$cache_dir"/* | sort -g -r -s)
     rm -r "$cache_dir"
     episode=$(select_quality "$quality")
     [ -z "$episode" ] && die "Episode not available"
