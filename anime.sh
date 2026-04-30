@@ -11,15 +11,26 @@ agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefo
 allanime_refr="https://allmanga.to"
 allanime_base="allanime.day"
 allanime_api="https://api.${allanime_base}"
-allanime_key="$(printf '%s' 'SimtVuagFbGR2K7P' | openssl dgst -sha256 -binary | od -A n -t x1 | tr -d ' \n')"
-mode="sub"  # Default mode, can be overridden by query parameter
-quality="best"
+allanime_key="$(printf '%s' 'Xot36i3lK3:v1' | openssl dgst -sha256 -binary | od -A n -t x1 | tr -d ' \n')"
+mode="${ANI_CLI_MODE:-sub}"  # Default mode, can be overridden by query parameter
+download_dir="${ANI_CLI_DOWNLOAD_DIR:-.}"
+log_episode="${ANI_CLI_LOG:-1}"
+quality="${ANI_CLI_QUALITY:-best}"
+allanime_cookie="${ALLANIME_COOKIE:-${ANI_CLI_COOKIE:-}}"
 LC_ALL=C
 export LC_ALL
 
 die() {
     echo "{\"error\": \"${1}\"}"
     exit 1
+}
+
+api_post() {
+    if [ -n "$allanime_cookie" ]; then
+        curl -b "$allanime_cookie" -e "$allanime_refr" -s -H "Content-Type: application/json" -X POST "${allanime_api}/api" --data "$1" -A "$agent"
+    else
+        curl -e "$allanime_refr" -s -H "Content-Type: application/json" -X POST "${allanime_api}/api" --data "$1" -A "$agent"
+    fi
 }
 
 # ------------------------------
@@ -68,9 +79,14 @@ generate_link() {
     1) provider_init "wixmp" "/Default :/p" ;;
     2) provider_init "youtube" "/Yt-mp4 :/p" ;;
     3) provider_init "sharepoint" "/S-mp4 :/p" ;;
+    5) provider_init "filemoon" "/Fm-mp4 :/p" ;;
     *) provider_init "hianime" "/Luf-Mp4 :/p" ;;
     esac
-    [ -n "$provider_id" ] && get_links "$provider_id"
+    if [ "$1" = "5" ] && [ -n "$provider_id" ]; then
+        get_filemoon_links "$provider_id"
+    else
+        [ -n "$provider_id" ] && get_links "$provider_id"
+    fi
 }
 
 select_quality() {
@@ -84,20 +100,87 @@ select_quality() {
     printf "%s" "$result" | cut -d'>' -f2
 }
 
+b64url_to_hex() {
+    _len=$(printf '%s' "$1" | wc -c | tr -d ' ')
+    _mod=$((_len % 4))
+    case $_mod in
+        2) _pad="==" ;;
+        3) _pad="=" ;;
+        *) _pad="" ;;
+    esac
+    printf '%s%s' "$1" "$_pad" | tr -- '-_' '+/' | base64 -d | od -A n -t x1 | tr -d ' \n'
+}
+
+get_filemoon_links() {
+    response="$(curl -e "$allanime_refr" -s "https://${allanime_base}$1" -A "$agent")"
+    _fm_json="$(printf '%s' "$response" | tr -d '\n ' | tr ',' '\n')"
+    iv="$(printf '%s' "$_fm_json" | sed -nE 's|^"iv":"([^"]*)"$|\1|p')"
+    payload="$(printf '%s' "$_fm_json" | sed -nE 's|^"payload":"([^"]*)"$|\1|p')"
+    kp1="$(printf '%s' "$_fm_json" | sed -nE 's|^"key_parts":\["([^"]*)"$|\1|p')"
+    kp2="$(printf '%s' "$_fm_json" | sed -nE 's|^"([A-Za-z0-9_-]+)"\]$|\1|p' | head -1)"
+    _kp1_hex="$(b64url_to_hex "$kp1")"
+    _kp2_hex="$(b64url_to_hex "$kp2")"
+    key_hex="$_kp1_hex$_kp2_hex"
+    iv_hex="$(b64url_to_hex "$iv")00000002"
+    tmp="$(mktemp)"
+    _fm_len=$(printf '%s' "$payload" | wc -c | tr -d ' ')
+    _fm_mod=$((_fm_len % 4))
+    case $_fm_mod in
+        2) _fm_pad="==" ;;
+        3) _fm_pad="=" ;;
+        *) _fm_pad="" ;;
+    esac
+    printf '%s%s' "$payload" "$_fm_pad" | tr -- '-_' '+/' | base64 -d >"$tmp"
+    ct_len=$(($(wc -c <"$tmp") - 16))
+    plain="$(dd if="$tmp" bs=1 count="$ct_len" 2>/dev/null | openssl enc -d -aes-256-ctr -K "$key_hex" -iv "$iv_hex" -nosalt -nopad 2>/dev/null)"
+    rm -f "$tmp"
+    printf '%s' "$plain" | tr '{}[]' '\n' |
+        sed -nE 's|.*"url":"([^"]*)".*"height":([0-9]+).*|\2 >\1|p;s|.*"height":([0-9]+).*"url":"([^"]*)".*|\1 >\2|p' |
+        sed 's|\\u0026|\&|g;s|\\u003D|=|g' | sort -rn
+    printf "\033[1;32m%s\033[0m Links Fetched\n" "Filemoon" 1>&2
+}
+
 get_episode_url() {
     # Expects: id, ep_no, quality, mode are already set
     # mode determines whether to fetch sub or dub version
     episode_embed_gql="query (\$showId: String!, \$translationType: VaildTranslationTypeEnumType!, \$episodeString: String!) { episode( showId: \$showId translationType: \$translationType episodeString: \$episodeString ) { episodeString sourceUrls }}"
-    api_resp=$(curl -e "$allanime_refr" -s -H "Content-Type: application/json" -X POST "${allanime_api}/api" \
-        --data "{\"variables\":{\"showId\":\"$id\",\"translationType\":\"$mode\",\"episodeString\":\"$ep_no\"},\"query\":\"$episode_embed_gql\"}" -A "$agent")
+
+    query_hash="d405d0edd690624b66baba3068e0edc3ac90f1597d898a1ec8db4e5c43c00fec"
+    query_vars="{\"showId\":\"$id\",\"translationType\":\"$mode\",\"episodeString\":\"$ep_no\"}"
+    query_ext="{\"persistedQuery\":{\"version\":1,\"sha256Hash\":\"$query_hash\"}}"
+
+    encoded_vars=$(printf '%s' "$query_vars" | sed 's/"/%22/g; s/:/%3A/g; s/{/%7B/g; s/}/%7D/g; s/,/%2C/g')
+    encoded_ext=$(printf '%s' "$query_ext" | sed 's/"/%22/g; s/:/%3A/g; s/{/%7B/g; s/}/%7D/g; s/,/%2C/g; s/ /%20/g')
+    api_url="${allanime_api}/api?variables=${encoded_vars}&extensions=${encoded_ext}"
+
+    if [ -n "$allanime_cookie" ]; then
+        api_resp=$(curl -b "$allanime_cookie" -e "$allanime_refr" -s -A "$agent" -H "Origin: https://youtu-chan.com" "$api_url")
+    else
+        api_resp=$(curl -e "$allanime_refr" -s -A "$agent" -H "Origin: https://youtu-chan.com" "$api_url")
+    fi
+
+    if [ -z "$api_resp" ] || ! printf "%s" "$api_resp" | grep -q "tobeparsed"; then
+        api_resp=$(api_post "{\"variables\":{\"showId\":\"$id\",\"translationType\":\"$mode\",\"episodeString\":\"$ep_no\"},\"query\":\"$episode_embed_gql\"}")
+    fi
+
+    if printf "%s" "$api_resp" | grep -q '"NEED_CAPTCHA"'; then
+        die "NEED_CAPTCHA. Solve the captcha on allanime.day and set ALLANIME_COOKIE."
+    fi
+    if printf "%s" "$api_resp" | grep -q '"errors"'; then
+        err_msg=$(printf "%s" "$api_resp" | sed -nE 's|.*"message":"([^"]+)".*|\1|p' | head -n1)
+        [ -z "$err_msg" ] && err_msg="Episode API error"
+        die "$err_msg"
+    fi
 
     if printf "%s" "$api_resp" | grep -q '"tobeparsed"'; then
         blob="$(printf "%s" "$api_resp" | sed -nE 's|.*"tobeparsed":"([^"]*)".*|\1|p')"
         tmp="$(mktemp)"
         printf '%s' "$blob" | base64 -d >"$tmp"
-        iv="$(dd if="$tmp" bs=1 count=12 2>/dev/null | od -A n -t x1 | tr -d ' \n')"
+        file_size="$(wc -c <"$tmp")"
+        iv="$(dd if="$tmp" bs=1 skip=1 count=12 2>/dev/null | od -A n -t x1 | tr -d ' \n')"
         ctr="${iv}00000002"
-        plain="$(dd if="$tmp" bs=1 skip=12 2>/dev/null | openssl enc -d -aes-256-ctr -K "$allanime_key" -iv "$ctr" -nosalt -nopad 2>/dev/null)"
+        ct_len=$((file_size - 13 - 16))
+        plain="$(dd if="$tmp" bs=1 skip=13 count="$ct_len" 2>/dev/null | openssl enc -d -aes-256-ctr -K "$allanime_key" -iv "$ctr" -nosalt -nopad 2>/dev/null)"
         rm -f "$tmp"
         resp="$(LC_ALL=C printf '%s' "$plain" | LC_ALL=C tr '{}' '\n' | sed -nE 's|.*"sourceUrl":"--([^"]*)".*"sourceName":"([^"]*)".*|\2 :\1|p')"
     else
@@ -105,7 +188,7 @@ get_episode_url() {
     fi
 
     cache_dir="$(mktemp -d)"
-    providers="1 2 3 4"
+    providers="1 2 3 4 5"
     for provider in $providers; do
         generate_link "$provider" >"$cache_dir/$provider" &
     done
@@ -120,18 +203,18 @@ get_episode_url() {
 search_anime() {
     # Expects: query variable is set.
     # Returns: id, title, sub_episodes, dub_episodes (tab separated)
-    search_gql="query(\$search: SearchInput \$limit: Int \$page: Int \$countryOrigin: VaildCountryOriginEnumType) { shows( search: \$search limit: \$limit page: \$page countryOrigin: \$countryOrigin ) { edges { _id name availableEpisodes __typename } }}"
-    curl -e "$allanime_refr" -s -H "Content-Type: application/json" -X POST "${allanime_api}/api" \
-        --data "{\"variables\":{\"search\":{\"allowAdult\":false,\"allowUnknown\":false,\"query\":\"$query\"},\"limit\":40,\"page\":1,\"countryOrigin\":\"ALL\"},\"query\":\"$search_gql\"}" -A "$agent" | sed 's|Show|\
-|g' | sed -nE 's|.*_id":"([^"]*)","name":"([^"]+)".*"sub":([0-9]+).*"dub":([0-9]+).*|\1\t\2\t\3\t\4|p; s|.*_id":"([^"]*)","name":"([^"]+)".*"sub":([0-9]+).*"dub":null.*|\1\t\2\t\3\t0|p; s|.*_id":"([^"]*)","name":"([^"]+)".*"sub":null.*"dub":([0-9]+).*|\1\t\2\t0\t\3|p' | sed 's/\\"//g'
+    search_gql="query(\$search: SearchInput \$limit: Int \$page: Int \$translationType: VaildTranslationTypeEnumType \$countryOrigin: VaildCountryOriginEnumType) { shows( search: \$search limit: \$limit page: \$page translationType: \$translationType countryOrigin: \$countryOrigin ) { edges { _id name availableEpisodes __typename } }}"
+    api_resp=$(api_post "{\"variables\":{\"search\":{\"allowAdult\":false,\"allowUnknown\":false,\"query\":\"$query\"},\"limit\":40,\"page\":1,\"translationType\":\"$mode\",\"countryOrigin\":\"ALL\"},\"query\":\"$search_gql\"}")
+    printf "%s" "$api_resp" | sed 's|Show|\
+|g' | sed -nE 's|.*_id":"([^"]*)","name":"(.+)".*"sub":([0-9]+).*"dub":([0-9]+).*|\1\t\2\t\3\t\4|p; s|.*_id":"([^"]*)","name":"(.+)".*"sub":([0-9]+).*"dub":null.*|\1\t\2\t\3\t0|p; s|.*_id":"([^"]*)","name":"(.+)".*"sub":null.*"dub":([0-9]+).*|\1\t\2\t0\t\3|p' | sed 's/\\"//g'
 }
 
 episodes_list() {
     # Expects: show id as argument ($1), mode variable is set (sub/dub)
     # Returns episode numbers based on current mode (sub or dub)
     episodes_list_gql="query (\$showId: String!) { show( _id: \$showId ) { _id availableEpisodesDetail }}"
-    curl -e "$allanime_refr" -s -H "Content-Type: application/json" -X POST "${allanime_api}/api" \
-        --data "{\"variables\":{\"showId\":\"$1\"},\"query\":\"$episodes_list_gql\"}" -A "$agent" | sed -nE "s|.*$mode\":\[([0-9.\",]*)\].*|\1|p" | sed 's|,|\
+    api_resp=$(api_post "{\"variables\":{\"showId\":\"$1\"},\"query\":\"$episodes_list_gql\"}")
+    printf "%s" "$api_resp" | sed -nE "s|.*$mode\":\[([0-9.\",]*)\].*|\1|p" | sed 's|,|\
 |g; s|"||g' | sort -n -k 1
 }
 
@@ -153,7 +236,7 @@ parse_query() {
             ep_no) ep_no="$value" ;;
             quality) quality="$value" ;;
             raw) raw="$value" ;;
-            mode) 
+            mode)
                 # Validate mode is either sub or dub
                 case "$value" in
                     sub|dub) mode="$value" ;;
@@ -225,6 +308,11 @@ case "$REQUEST_URI_PATH" in
     available=$(episodes_list "$id" | grep -w "$ep_no")
     [ -z "$available" ] && die "Episode not released"
     url=$(get_episode_url)
+    status=$?
+    if [ $status -ne 0 ]; then
+        echo "$url"
+        exit $status
+    fi
     echo "{\"episode_url\": \"${url}\"}"
     ;;
 *)
