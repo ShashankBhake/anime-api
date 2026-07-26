@@ -227,6 +227,7 @@ def episode_url():
     quality = request.args.get('quality', 'best')
     # Get mode parameter (sub or dub), default to sub
     mode = request.args.get('mode', 'sub')
+    debug = request.args.get('debug', '0')
     if mode not in ['sub', 'dub']:
         mode = 'sub'
     params = f"show_id={orig_id}&ep_no={ep_no}&quality={quality}&mode={mode}"
@@ -234,9 +235,48 @@ def episode_url():
         output = subprocess.check_output(['./anime.sh', '/episode_url', params])
         data = json.loads(output.decode('utf-8'))
         data['mode'] = mode  # Include mode in response for clarity
+        headers = data.get('headers') or {}
+        player_url = data.get('episode_url', '')
+        referer = headers.get('Referer', '')
+        if player_url:
+            proxy = f"/stream?url={requests.utils.quote(player_url, safe='')}"
+            if referer:
+                proxy += f"&referer={requests.utils.quote(referer, safe='')}"
+            data['episode_url'] = request.host_url.rstrip('/') + proxy
+        if debug != '1':
+            return jsonify({
+                'episode_url': data.get('episode_url', ''),
+                'mode': data.get('mode', mode),
+            })
+        data['raw_episode_url'] = player_url
         return jsonify(data)
     except Exception as e:
         return make_response(jsonify({"error": str(e)}), 500)
+
+@app.route('/stream', methods=['GET'])
+def stream_proxy():
+    url = request.args.get('url', '')
+    if not url:
+        return make_response(jsonify({"error": "Missing url parameter"}), 400)
+
+    referer = request.args.get('referer', '')
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:150.0) Gecko/20100101 Firefox/150.0',
+    }
+    if referer:
+        headers['Referer'] = referer
+
+    upstream = requests.get(url, headers=headers, stream=True, allow_redirects=True, timeout=30)
+    excluded = {'content-encoding', 'transfer-encoding', 'connection'}
+    response_headers = [
+        (k, v) for k, v in upstream.headers.items() if k.lower() not in excluded
+    ]
+    return app.response_class(
+        upstream.iter_content(chunk_size=1024 * 128),
+        status=upstream.status_code,
+        headers=response_headers,
+        direct_passthrough=True,
+    )
 
 @app.route('/thumbnails', methods=['POST'])
 def get_thumbnails():
