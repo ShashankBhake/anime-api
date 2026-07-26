@@ -10,7 +10,7 @@ WORKDIR /app
 # - curl/coreutils/sed/grep/dd/od for the shell script
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        botan3 \
+        botan \
         curl \
         coreutils \
         grep \
